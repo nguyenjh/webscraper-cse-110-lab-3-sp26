@@ -51,13 +51,13 @@ class StudentRepoValidator:
             },
             'units_relative': {
                 'pattern': r'\d+(?:em|rem|vh|vw|vmin|vmax|%|ex|ch)',
-                'description': 'Relative units (em, rem, vh, vw, %, etc.) (minimum 3 unique)',
+                'description': 'Relative units (em, rem, vh, vw, %, etc.)',
                 'required': True,
                 'min_count': 3
             },
             'units_absolute': {
                 'pattern': r'\d+(?:px|cm|mm|in|pt|pc)',
-                'description': 'Absolute units (px, cm, mm, in, pt, pc) (minimum 3 unique)',
+                'description': 'Absolute units (px, cm, mm, in, pt, pc)',
                 'required': True,
                 'min_count': 3
             },
@@ -128,7 +128,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements - Simplified patterns that actually work
+        # CSS Selectors Requirements - More comprehensive patterns
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -151,7 +151,7 @@ class StudentRepoValidator:
                 'required': True
             },
             'attribute_selector': {
-                'pattern': r'\[[^\]]+\](?=[\s\n\r]*[,{])',
+                'pattern': r'\[[^\]]+\]',  # Simpler pattern that matches any attribute selector
                 'description': 'Attribute selector ([attr=value])',
                 'required': True
             },
@@ -166,23 +166,23 @@ class StudentRepoValidator:
                 'required': True
             },
             'descendant_combinator': {
-                'pattern': r'[a-zA-Z][\w-]+\s+[a-zA-Z][\w-]+(?=[\s\n\r]*[,{])',
+                'pattern': r'[a-zA-Z#\.][\w-]+\s+[a-zA-Z#\.][\w-]+(?=[\s\n\r]*[,{])',
                 'description': 'Descendant combinator (parent child)',
                 'required': True
             },
             'child_combinator': {
-                # Simplified pattern that matches nav > a, div > span, etc.
-                'pattern': r'[a-zA-Z][\w-]+\s*>\s*[a-zA-Z][\w-]+',
+                # Updated to match patterns like "body > .poll-chart" and "nav > a"
+                'pattern': r'[a-zA-Z#\.][\w-]+\s*>\s*[a-zA-Z#\.][\w-]+',
                 'description': 'Child combinator (parent > child)',
                 'required': True
             },
             'general_sibling': {
-                'pattern': r'[a-zA-Z][\w-]+\s*~\s*[a-zA-Z][\w-]+(?=[\s\n\r]*[,{])',
+                'pattern': r'[a-zA-Z#\.][\w-]+\s*~\s*[a-zA-Z#\.][\w-]+(?=[\s\n\r]*[,{])',
                 'description': 'General sibling combinator (element ~ element)',
                 'required': True
             },
             'adjacent_sibling': {
-                'pattern': r'[a-zA-Z][\w-]+\s*\+\s*[a-zA-Z][\w-]+(?=[\s\n\r]*[,{])',
+                'pattern': r'[a-zA-Z#\.][\w-]+\s*\+\s*[a-zA-Z#\.][\w-]+(?=[\s\n\r]*[,{])',
                 'description': 'Adjacent sibling combinator (element + element)',
                 'required': True
             },
@@ -197,7 +197,7 @@ class StudentRepoValidator:
                 'required': True
             },
             'nested_selectors': {
-                'pattern': r'[a-zA-Z][\w-]+\s*\{\s*(?:&)?\s*[a-zA-Z][\w-]+\s*\{',
+                'pattern': r'[a-zA-Z#\.][\w-]+\s*\{\s*(?:&)?\s*[a-zA-Z#\.][\w-]+\s*\{',
                 'description': 'Nested selectors (new in 2023)',
                 'required': True
             }
@@ -546,22 +546,11 @@ class StudentRepoValidator:
             
             found = len(matches) > 0
             
-            # Special debug for child combinator
-            if selector_name == 'child_combinator':
-                if found:
-                    print(f"[DEBUG] ✓ Found child combinator! Matches: {[m.group(0) for m in matches]}")
-                else:
-                    # Try a couple more patterns for debugging
-                    pattern2 = r'nav\s*>\s*a'
-                    pattern3 = r'\w+\s*>\s*\w+'
-                    match2 = re.search(pattern2, css_content, re.IGNORECASE)
-                    match3 = re.search(pattern3, css_content, re.IGNORECASE)
-                    if match2:
-                        print(f"[DEBUG] ✓ Found with pattern '{pattern2}': {match2.group(0)}")
-                    elif match3:
-                        print(f"[DEBUG] ✓ Found with pattern '{pattern3}': {match3.group(0)}")
-                    else:
-                        print(f"[DEBUG] ✗ Child combinator not found in CSS")
+            # Special debug for attribute selector and child combinator
+            if selector_name == 'attribute_selector' and found:
+                print(f"[DEBUG] ✓ Found attribute selector: {[m.group(0) for m in matches][:3]}")
+            elif selector_name == 'child_combinator' and found:
+                print(f"[DEBUG] ✓ Found child combinator: {[m.group(0) for m in matches][:3]}")
             
             results[selector_name] = {
                 'description': selector_info['description'],
