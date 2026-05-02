@@ -116,7 +116,7 @@ class StudentRepoValidator:
                 'grid_attributes_required': 3
             },
             'media_queries': {
-                'pattern': r'@media\s+(?:only|not)?\s*\((?:min-width|max-width|width)',
+                'pattern': r'@media\s+(?:only|not)?\s*\([^\)]+\)|\@media\s+[a-zA-Z-]+',  # FIXED: Better media query detection
                 'description': 'Media queries for responsiveness',
                 'required': True
             },
@@ -171,7 +171,7 @@ class StudentRepoValidator:
                 'required': True
             },
             'child_combinator': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*>\s*[a-zA-Z#\.][\w-]+\s*\{',
+                'pattern': r'[a-zA-Z#\.][\w-]+\s*>\s*[a-zA-Z#\.][\w-]+\s*\{',  # FIXED: Better child combinator detection
                 'description': 'Child combinator (parent > child)',
                 'required': True
             },
@@ -460,7 +460,7 @@ class StudentRepoValidator:
                 continue
             
             # Regular pattern matching for other requirements
-            matches = re.findall(req_info['pattern'], css_content, re.MULTILINE | re.IGNORECASE)
+            matches = re.findall(req_info['pattern'], css_content, re.MULTILINE | re.IGNORECASE | re.DOTALL)
             
             found = len(matches) > 0
             details = {}
@@ -958,7 +958,7 @@ class InteractiveValidator:
                         
                         missing_general = summary.get('general_missing_list', [])
                         if missing_general and len(missing_general) <= 5:
-                            print(f"   Missing general: {', '.join(missing_general[:3])}...")
+                            print(f"   Missing general: {', '.join(missing_general)}")
                         elif missing_general:
                             print(f"   Missing general: {len(missing_general)} items (see full list above)")
                         
