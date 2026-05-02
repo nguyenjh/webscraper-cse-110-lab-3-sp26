@@ -51,13 +51,13 @@ class StudentRepoValidator:
             },
             'units_relative': {
                 'pattern': r'\d+(?:em|rem|vh|vw|vmin|vmax|%|ex|ch)',
-                'description': 'Relative units (em, rem, vh, vw, %, etc.)',
+                'description': 'Relative units (em, rem, vh, vw, %, etc.) (minimum 3 unique)',
                 'required': True,
                 'min_count': 3
             },
             'units_absolute': {
                 'pattern': r'\d+(?:px|cm|mm|in|pt|pc)',
-                'description': 'Absolute units (px, cm, mm, in, pt, pc)',
+                'description': 'Absolute units (px, cm, mm, in, pt, pc) (minimum 3 unique)',
                 'required': True,
                 'min_count': 3
             },
