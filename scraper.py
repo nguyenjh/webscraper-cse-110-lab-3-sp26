@@ -128,7 +128,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements - More comprehensive patterns
+        # CSS Selectors Requirements - Updated patterns
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -151,7 +151,7 @@ class StudentRepoValidator:
                 'required': True
             },
             'attribute_selector': {
-                'pattern': r'\[[^\]]+\]',  # Simpler pattern that matches any attribute selector
+                'pattern': r'\[[^\]]+\]',
                 'description': 'Attribute selector ([attr=value])',
                 'required': True
             },
@@ -171,7 +171,6 @@ class StudentRepoValidator:
                 'required': True
             },
             'child_combinator': {
-                # Updated to match patterns like "body > .poll-chart" and "nav > a"
                 'pattern': r'[a-zA-Z#\.][\w-]+\s*>\s*[a-zA-Z#\.][\w-]+',
                 'description': 'Child combinator (parent > child)',
                 'required': True
@@ -192,7 +191,8 @@ class StudentRepoValidator:
                 'required': True
             },
             'has_selector': {
-                'pattern': r':has\s*\([^)]+\)(?=[\s\n\r]*[,{])',
+                # Updated to match patterns like "form:has(:invalid) button" and "div:has(p)"
+                'pattern': r':has\s*\([^)]+\)',
                 'description': ':has() pseudo-class selector (new in 2023)',
                 'required': True
             },
@@ -546,11 +546,15 @@ class StudentRepoValidator:
             
             found = len(matches) > 0
             
-            # Special debug for attribute selector and child combinator
-            if selector_name == 'attribute_selector' and found:
-                print(f"[DEBUG] ✓ Found attribute selector: {[m.group(0) for m in matches][:3]}")
-            elif selector_name == 'child_combinator' and found:
-                print(f"[DEBUG] ✓ Found child combinator: {[m.group(0) for m in matches][:3]}")
+            # Special debug for has selector
+            if selector_name == 'has_selector' and found:
+                print(f"[DEBUG] ✓ Found :has() selector: {[m.group(0) for m in matches][:3]}")
+            elif selector_name == 'has_selector' and not found:
+                # Try a simpler pattern to see if it exists
+                simple_has = re.search(r':has\(', css_content, re.IGNORECASE)
+                if simple_has:
+                    print(f"[DEBUG] ✗ :has() pattern didn't match but ':has(' found in CSS")
+                    print(f"[DEBUG] Full pattern was: {selector_info['pattern']}")
             
             results[selector_name] = {
                 'description': selector_info['description'],
