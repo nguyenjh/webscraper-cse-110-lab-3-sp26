@@ -116,7 +116,7 @@ class StudentRepoValidator:
                 'grid_attributes_required': 3
             },
             'media_queries': {
-                'pattern': r'@media\s+(?:only|not)?\s*\([^\)]+\)|\@media\s+[a-zA-Z-]+',  # FIXED: Better media query detection
+                'pattern': r'@media\s+[^{]*\{',
                 'description': 'Media queries for responsiveness',
                 'required': True
             },
@@ -128,75 +128,76 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements
+        # CSS Selectors Requirements - Simplified patterns that actually work
         self.css_selectors_requirements = {
             'class_selector': {
-                'pattern': r'\.[a-zA-Z_][\w-]*\s*\{',
+                'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
                 'description': 'Class selector (.classname)',
                 'required': True
             },
             'id_selector': {
-                'pattern': r'#[a-zA-Z_][\w-]*\s*\{',
+                'pattern': r'#[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
                 'description': 'ID selector (#idname)',
                 'required': True
             },
             'universal_selector': {
-                'pattern': r'\*\s*\{',
+                'pattern': r'\*(?=[\s\n\r]*[,{])',
                 'description': 'Universal selector (*)',
                 'required': True
             },
             'element_selector': {
-                'pattern': r'^[a-zA-Z][a-zA-Z0-9]*\s*\{',
+                'pattern': r'^[a-zA-Z][a-zA-Z0-9]*(?=[\s\n\r]*[,{])',
                 'description': 'Element selector (div, p, h1, etc.)',
                 'required': True
             },
             'attribute_selector': {
-                'pattern': r'\[[a-zA-Z-]+(?:[~|^$*]?=[^"\]]+)?\]',
+                'pattern': r'\[[^\]]+\](?=[\s\n\r]*[,{])',
                 'description': 'Attribute selector ([attr=value])',
                 'required': True
             },
             'pseudo_class_selector': {
-                'pattern': r':(?:hover|active|focus|visited|first-child|last-child|nth-child|not|is|where)',
+                'pattern': r':[a-zA-Z-]+(?:\([^)]*\))?(?=[\s\n\r]*[,{])',
                 'description': 'Pseudo-class selector (:hover, :active, etc.)',
                 'required': True
             },
             'selector_list': {
-                'pattern': r'[^,{}]+\s*,\s*[^,{}]+(?=[^{]*\{)',
+                'pattern': r'[^{},]+\s*,\s*[^{},]+(?=[\s\n\r]*\{)',
                 'description': 'Selector list (element, element)',
                 'required': True
             },
             'descendant_combinator': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s+[a-zA-Z#\.][\w-]+\s*\{',
+                'pattern': r'[a-zA-Z][\w-]+\s+[a-zA-Z][\w-]+(?=[\s\n\r]*[,{])',
                 'description': 'Descendant combinator (parent child)',
                 'required': True
             },
             'child_combinator': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*>\s*[a-zA-Z#\.][\w-]+\s*\{',  # FIXED: Better child combinator detection
+                # Simplified pattern that matches nav > a, div > span, etc.
+                'pattern': r'[a-zA-Z][\w-]+\s*>\s*[a-zA-Z][\w-]+',
                 'description': 'Child combinator (parent > child)',
                 'required': True
             },
             'general_sibling': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*~\s*[a-zA-Z#\.][\w-]+\s*\{',
+                'pattern': r'[a-zA-Z][\w-]+\s*~\s*[a-zA-Z][\w-]+(?=[\s\n\r]*[,{])',
                 'description': 'General sibling combinator (element ~ element)',
                 'required': True
             },
             'adjacent_sibling': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*\+\s*[a-zA-Z#\.][\w-]+\s*\{',
+                'pattern': r'[a-zA-Z][\w-]+\s*\+\s*[a-zA-Z][\w-]+(?=[\s\n\r]*[,{])',
                 'description': 'Adjacent sibling combinator (element + element)',
                 'required': True
             },
             'combined_two_selectors': {
-                'pattern': r'[a-zA-Z#\.][\w-]*\.[a-zA-Z_][\w-]*\s*\{',
+                'pattern': r'[a-zA-Z][\w-]*\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
                 'description': 'Combined selectors (element.class)',
                 'required': True
             },
             'has_selector': {
-                'pattern': r':has\s*\(',
+                'pattern': r':has\s*\([^)]+\)(?=[\s\n\r]*[,{])',
                 'description': ':has() pseudo-class selector (new in 2023)',
                 'required': True
             },
             'nested_selectors': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*\{\s*[&]?\s*[a-zA-Z#\.][\w-]+\s*\{',
+                'pattern': r'[a-zA-Z][\w-]+\s*\{\s*(?:&)?\s*[a-zA-Z][\w-]+\s*\{',
                 'description': 'Nested selectors (new in 2023)',
                 'required': True
             }
@@ -540,15 +541,33 @@ class StudentRepoValidator:
         results = {}
         
         for selector_name, selector_info in self.css_selectors_requirements.items():
-            matches = re.findall(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL)
+            # Use finditer to get more details
+            matches = list(re.finditer(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE))
             
             found = len(matches) > 0
+            
+            # Special debug for child combinator
+            if selector_name == 'child_combinator':
+                if found:
+                    print(f"[DEBUG] ✓ Found child combinator! Matches: {[m.group(0) for m in matches]}")
+                else:
+                    # Try a couple more patterns for debugging
+                    pattern2 = r'nav\s*>\s*a'
+                    pattern3 = r'\w+\s*>\s*\w+'
+                    match2 = re.search(pattern2, css_content, re.IGNORECASE)
+                    match3 = re.search(pattern3, css_content, re.IGNORECASE)
+                    if match2:
+                        print(f"[DEBUG] ✓ Found with pattern '{pattern2}': {match2.group(0)}")
+                    elif match3:
+                        print(f"[DEBUG] ✓ Found with pattern '{pattern3}': {match3.group(0)}")
+                    else:
+                        print(f"[DEBUG] ✗ Child combinator not found in CSS")
             
             results[selector_name] = {
                 'description': selector_info['description'],
                 'found': found,
                 'required': selector_info['required'],
-                'examples': matches[:2] if matches else []
+                'examples': [m.group(0)[:80] for m in matches[:2]] if matches else []
             }
         
         return results
@@ -951,7 +970,7 @@ class InteractiveValidator:
                     print(f"   📁 Missing: {files_missing_count} files  |  🎨 Missing: {general_missing_count} general  |  🔍 Missing: {selectors_missing_count} selectors")
                     
                     # Show specific missing items for first few incomplete repos
-                    if idx <= 3:  # Show details for first 3 incomplete repos
+                    if idx <= 3:
                         missing_files = summary.get('files_missing_list', [])
                         if missing_files:
                             print(f"   Missing files: {', '.join(missing_files)}")
@@ -960,7 +979,7 @@ class InteractiveValidator:
                         if missing_general and len(missing_general) <= 5:
                             print(f"   Missing general: {', '.join(missing_general)}")
                         elif missing_general:
-                            print(f"   Missing general: {len(missing_general)} items (see full list above)")
+                            print(f"   Missing general: {len(missing_general)} items")
                         
                         missing_selectors = summary.get('selectors_missing_list', [])
                         if missing_selectors and len(missing_selectors) <= 5:
