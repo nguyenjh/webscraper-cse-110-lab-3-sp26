@@ -8,6 +8,7 @@ class StudentRepoValidator:
     """
     Enhanced validator for student GitHub repositories for CSE110 Lab 3
     Checks required files, CSS requirements, AND CSS validation screenshot
+    Can validate ANY GitHub repository URL
     """
     
     def __init__(self):
@@ -128,7 +129,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements - Updated patterns
+        # CSS Selectors Requirements
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -191,7 +192,6 @@ class StudentRepoValidator:
                 'required': True
             },
             'has_selector': {
-                # Updated to match patterns like "form:has(:invalid) button" and "div:has(p)"
                 'pattern': r':has\s*\([^)]+\)',
                 'description': ':has() pseudo-class selector (new in 2023)',
                 'required': True
@@ -203,11 +203,9 @@ class StudentRepoValidator:
             }
         }
         
-        self.repo_pattern = re.compile(r'sp26-cse110-lab3', re.IGNORECASE)
-        
     def validate_repo(self, repo_url: str, check_css_content: bool = True) -> Dict:
         """
-        Validate a single GitHub repository
+        Validate a single GitHub repository (any repository)
         
         Args:
             repo_url: GitHub repository URL
@@ -225,15 +223,6 @@ class StudentRepoValidator:
                 'url': repo_url,
                 'valid': False,
                 'error': 'Not a valid GitHub repository URL',
-                'details': {}
-            }
-        
-        # Check if it matches the lab naming pattern
-        if not self.repo_pattern.search(repo_url):
-            return {
-                'url': repo_url,
-                'valid': False,
-                'error': f'Repository name does not match pattern "sp26-cse110-lab3"',
                 'details': {}
             }
         
@@ -541,20 +530,9 @@ class StudentRepoValidator:
         results = {}
         
         for selector_name, selector_info in self.css_selectors_requirements.items():
-            # Use finditer to get more details
             matches = list(re.finditer(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE))
             
             found = len(matches) > 0
-            
-            # Special debug for has selector
-            if selector_name == 'has_selector' and found:
-                print(f"[DEBUG] ✓ Found :has() selector: {[m.group(0) for m in matches][:3]}")
-            elif selector_name == 'has_selector' and not found:
-                # Try a simpler pattern to see if it exists
-                simple_has = re.search(r':has\(', css_content, re.IGNORECASE)
-                if simple_has:
-                    print(f"[DEBUG] ✗ :has() pattern didn't match but ':has(' found in CSS")
-                    print(f"[DEBUG] Full pattern was: {selector_info['pattern']}")
             
             results[selector_name] = {
                 'description': selector_info['description'],
@@ -695,13 +673,6 @@ class StudentRepoValidator:
         print("\n" + "="*80)
         print(f"VALIDATING: {result['url']}")
         print("="*80)
-        
-        # Check for repository name pattern
-        if not self.repo_pattern.search(result['url']):
-            print("\n❌ REPOSITORY NAME ERROR")
-            print(f"   Expected pattern: sp26-cse110-lab3")
-            print(f"   Found: {result['url'].split('/')[-1]}")
-            return
         
         # Check for errors
         if result.get('error'):
@@ -877,6 +848,7 @@ class StudentRepoValidator:
 class InteractiveValidator:
     """
     Interactive terminal validator that accepts links one by one
+    Can validate ANY GitHub repository URL
     """
     
     def __init__(self):
@@ -889,7 +861,7 @@ class InteractiveValidator:
         
         while True:
             print("\n" + "─"*80)
-            url = input("\n📝 Enter student's GitHub repository URL (or 'quit' to exit): ").strip()
+            url = input("\n📝 Enter any GitHub repository URL (or 'quit' to exit): ").strip()
             
             if url.lower() in ['quit', 'exit', 'q', 'done']:
                 self.print_summary()
@@ -908,11 +880,9 @@ class InteractiveValidator:
     def print_header(self):
         """Print the welcome header"""
         print("\n" + "="*80)
-        print("🎓 CSE110 Lab 3 - Enhanced Student Repository Validator")
+        print("🎓 GitHub Repository Validator - CSE110 Lab 3 Requirements")
         print("="*80)
-        print("\n📋 Lab Requirements:")
-        print("  • Due Date: Tuesday, April 21, 11:59pm")
-        print("  • Repository name must be: sp26-cse110-lab3")
+        print("\n📋 This validator checks for CSE110 Lab 3 requirements:")
         print("\n  Required Files (5 items):")
         print("    - README.md (with GitHub Pages URL)")
         print("    - standup.md (standup notes template)")
@@ -930,6 +900,8 @@ class InteractiveValidator:
         print("    - Pseudo-class, Selector List")
         print("    - All 4 Combinator types")
         print("    - Combined selectors, :has(), Nested selectors")
+        print("\n💡 You can validate ANY GitHub repository URL")
+        print("   The tool will check for all lab requirements regardless of repository name")
     
     def print_summary(self):
         """Print summary of all checked repositories"""
@@ -1000,7 +972,7 @@ def quick_check():
     
     if len(sys.argv) != 2:
         print("Usage: python scraper.py <github-repo-url>")
-        print("Example: python scraper.py https://github.com/username/sp26-cse110-lab3")
+        print("Example: python scraper.py https://github.com/username/repository-name")
         return
     
     validator = StudentRepoValidator()
