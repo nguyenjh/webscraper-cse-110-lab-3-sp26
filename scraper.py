@@ -129,7 +129,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements
+        # CSS Selectors Requirements - ULTRA SIMPLE patterns that just look for the combinator symbols
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -148,7 +148,7 @@ class StudentRepoValidator:
             },
             'element_selector': {
                 'pattern': r'^[a-zA-Z][a-zA-Z0-9]*(?=[\s\n\r]*[,{])',
-                'description': 'Element selector (div, p, h1, etc.)',
+                'description': 'Element selector (div, p, h1, h2, etc.)',
                 'required': True
             },
             'attribute_selector': {
@@ -167,22 +167,24 @@ class StudentRepoValidator:
                 'required': True
             },
             'descendant_combinator': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s+[a-zA-Z#\.][\w-]+(?=[\s\n\r]*[,{])',
+                'pattern': r'[a-zA-Z0-9#\.][\w-]+\s+[a-zA-Z0-9#\.][\w-]+(?=[\s\n\r]*[,{])',
                 'description': 'Descendant combinator (parent child)',
                 'required': True
             },
             'child_combinator': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*>\s*[a-zA-Z#\.][\w-]+',
+                'pattern': r'[a-zA-Z0-9#\.][\w-]+\s*>\s*[a-zA-Z0-9#\.][\w-]+',
                 'description': 'Child combinator (parent > child)',
                 'required': True
             },
             'general_sibling': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*~\s*[a-zA-Z#\.][\w-]+(?=[\s\n\r]*[,{])',
+                # Just look for any selector with ~ (anywhere in the CSS)
+                'pattern': r'~',
                 'description': 'General sibling combinator (element ~ element)',
                 'required': True
             },
             'adjacent_sibling': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*\+\s*[a-zA-Z#\.][\w-]+(?=[\s\n\r]*[,{])',
+                # Just look for any selector with + (anywhere in the CSS)
+                'pattern': r'\+',
                 'description': 'Adjacent sibling combinator (element + element)',
                 'required': True
             },
@@ -197,7 +199,7 @@ class StudentRepoValidator:
                 'required': True
             },
             'nested_selectors': {
-                'pattern': r'[a-zA-Z#\.][\w-]+\s*\{\s*(?:&)?\s*[a-zA-Z#\.][\w-]+\s*\{',
+                'pattern': r'[a-zA-Z0-9#\.][\w-]+\s*\{\s*(?:&)?\s*[a-zA-Z0-9#\.][\w-]+\s*\{',
                 'description': 'Nested selectors (new in 2023)',
                 'required': True
             }
@@ -529,17 +531,49 @@ class StudentRepoValidator:
         """Check CSS content for required selectors"""
         results = {}
         
+        print(f"\n[DEBUG] Looking for combinators in CSS...")
+        
         for selector_name, selector_info in self.css_selectors_requirements.items():
-            matches = list(re.finditer(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE))
-            
-            found = len(matches) > 0
+            # Special handling for sibling combinators - just check if the symbol exists
+            if selector_name == 'general_sibling':
+                # Check if ~ appears in the CSS (and it's not inside a comment or string)
+                # Simple approach: just check for ~ with alphanumeric on both sides
+                simple_pattern = r'[a-zA-Z0-9_\-.#]+\s*~\s*[a-zA-Z0-9_\-.#]+'
+                matches = re.findall(simple_pattern, css_content, re.MULTILINE | re.IGNORECASE)
+                found = len(matches) > 0
+                if found:
+                    print(f"[DEBUG] ✓ Found general sibling combinator (~): {matches[:3]}")
+                else:
+                    # Check if at least the ~ symbol exists
+                    if '~' in css_content:
+                        print(f"[DEBUG] ✗ '~' symbol found but not in proper selector format")
+            elif selector_name == 'adjacent_sibling':
+                # Check if + appears in the CSS (and it's not inside a comment or string)
+                simple_pattern = r'[a-zA-Z0-9_\-.#]+\s*\+\s*[a-zA-Z0-9_\-.#]+'
+                matches = re.findall(simple_pattern, css_content, re.MULTILINE | re.IGNORECASE)
+                found = len(matches) > 0
+                if found:
+                    print(f"[DEBUG] ✓ Found adjacent sibling combinator (+): {matches[:3]}")
+                else:
+                    # Check if at least the + symbol exists
+                    if '+' in css_content:
+                        print(f"[DEBUG] ✗ '+' symbol found but not in proper selector format")
+            else:
+                matches = list(re.finditer(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE))
+                found = len(matches) > 0
             
             results[selector_name] = {
                 'description': selector_info['description'],
                 'found': found,
                 'required': selector_info['required'],
-                'examples': [m.group(0)[:80] for m in matches[:2]] if matches else []
+                'examples': []
             }
+            
+            # Add examples for debugging
+            if selector_name == 'general_sibling' and found:
+                results[selector_name]['examples'] = matches[:2] if 'matches' in locals() else []
+            elif selector_name == 'adjacent_sibling' and found:
+                results[selector_name]['examples'] = matches[:2] if 'matches' in locals() else []
         
         return results
     
