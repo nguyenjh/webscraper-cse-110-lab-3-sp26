@@ -129,7 +129,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements - Updated patterns
+        # CSS Selectors Requirements - Fixed element selector pattern
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -147,8 +147,9 @@ class StudentRepoValidator:
                 'required': True
             },
             'element_selector': {
-                'pattern': r'^[a-zA-Z][a-zA-Z0-9]*(?=[\s\n\r]*[,{])',
-                'description': 'Element selector (div, p, h1, h2, etc.)',
+                # Removed the ^ (start of line anchor) to match element selectors even with leading whitespace
+                'pattern': r'[a-zA-Z][a-zA-Z0-9]*(?=[\s\n\r]*[,{])',
+                'description': 'Element selector (div, p, h1, h2, body, etc.)',
                 'required': True
             },
             'attribute_selector': {
@@ -172,7 +173,6 @@ class StudentRepoValidator:
                 'required': True
             },
             'child_combinator': {
-                # Simplified pattern for child combinator
                 'pattern': r'[a-zA-Z0-9_\-.#]+\s*>\s*[a-zA-Z0-9_\-.#]+',
                 'description': 'Child combinator (parent > child)',
                 'required': True
@@ -198,7 +198,6 @@ class StudentRepoValidator:
                 'required': True
             },
             'nested_selectors': {
-                # Pattern to match nested selectors like "nav { & a {"
                 'pattern': r'[a-zA-Z0-9_\-.#]+\s*\{\s*&\s+[a-zA-Z0-9_\-.#]+\s*\{',
                 'description': 'Nested selectors (new in 2023)',
                 'required': True
@@ -537,23 +536,15 @@ class StudentRepoValidator:
             matches = list(re.finditer(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE))
             found = len(matches) > 0
             
-            # Special debug for nested selectors and child combinator
-            if selector_name == 'nested_selectors' and found:
-                print(f"[DEBUG] ✓ Found nested selectors: {[m.group(0)[:50] for m in matches][:2]}")
-            elif selector_name == 'nested_selectors' and not found:
-                # Check for & symbol which indicates nested selectors
-                if '&' in css_content:
-                    print(f"[DEBUG] ✗ '&' symbol found but pattern didn't match nested selector format")
-                    # Try to find the pattern manually
-                    simple_nested = re.search(r'[a-z]+\s*\{\s*&\s+[a-z]+\s*\{', css_content, re.IGNORECASE)
-                    if simple_nested:
-                        print(f"[DEBUG] Manual nested search found: {simple_nested.group(0)}")
-            elif selector_name == 'child_combinator' and found:
-                print(f"[DEBUG] ✓ Found child combinator: {[m.group(0) for m in matches][:3]}")
-            elif selector_name == 'general_sibling' and found:
-                print(f"[DEBUG] ✓ Found general sibling combinator: {[m.group(0) for m in matches][:3]}")
-            elif selector_name == 'adjacent_sibling' and found:
-                print(f"[DEBUG] ✓ Found adjacent sibling combinator: {[m.group(0) for m in matches][:3]}")
+            # Special debug for element selector
+            if selector_name == 'element_selector':
+                if found:
+                    print(f"[DEBUG] ✓ Found element selectors: {[m.group(0) for m in matches][:3]}")
+                else:
+                    print(f"[DEBUG] ✗ No element selectors found with pattern: {selector_info['pattern']}")
+                    # Check if 'body' exists in CSS
+                    if 'body' in css_content:
+                        print(f"[DEBUG] 'body' found in CSS but pattern didn't match")
             
             results[selector_name] = {
                 'description': selector_info['description'],
