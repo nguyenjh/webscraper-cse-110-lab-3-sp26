@@ -1,6 +1,6 @@
 import re
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from typing import Dict, Optional, List, Set
 import time
 
@@ -8,7 +8,7 @@ class StudentRepoValidator:
     """
     Enhanced validator for student GitHub repositories for CSE110 Lab 3
     Checks required files, CSS requirements, AND CSS validation screenshot
-    Can validate ANY GitHub repository URL
+    Can validate ANY GitHub repository URL, including subdirectories
     """
     
     def __init__(self):
@@ -129,7 +129,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements - Fixed element selector pattern
+        # CSS Selectors Requirements
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -147,7 +147,6 @@ class StudentRepoValidator:
                 'required': True
             },
             'element_selector': {
-                # Removed the ^ (start of line anchor) to match element selectors even with leading whitespace
                 'pattern': r'[a-zA-Z][a-zA-Z0-9]*(?=[\s\n\r]*[,{])',
                 'description': 'Element selector (div, p, h1, h2, body, etc.)',
                 'required': True
@@ -206,20 +205,20 @@ class StudentRepoValidator:
         
     def validate_repo(self, repo_url: str, check_css_content: bool = True) -> Dict:
         """
-        Validate a single GitHub repository (any repository)
+        Validate a single GitHub repository (any repository, including subdirectories)
         
         Args:
-            repo_url: GitHub repository URL
+            repo_url: GitHub repository URL (can include subdirectories like /tree/main/folder)
             check_css_content: Whether to check CSS content for requirements
             
         Returns:
             Dictionary with validation results
         """
-        # Clean the URL
-        repo_url = self._clean_url(repo_url)
+        # Clean the URL and extract the base repository URL
+        base_repo_url, subdirectory_path = self._extract_base_repo_and_path(repo_url)
         
         # Check if it's a valid GitHub URL
-        if not self._is_github_url(repo_url):
+        if not self._is_github_url(base_repo_url):
             return {
                 'url': repo_url,
                 'valid': False,
@@ -227,84 +226,51 @@ class StudentRepoValidator:
                 'details': {}
             }
         
-        # Get repository contents via GitHub API
-        api_url = self._get_api_url(repo_url)
-        if not api_url:
-            return {
-                'url': repo_url,
-                'valid': False,
-                'error': 'Could not generate API URL',
-                'details': {}
-            }
-        
+        # Get all repository contents recursively
         try:
-            response = requests.get(api_url, timeout=10)
+            all_files = self._get_all_repository_files(base_repo_url, subdirectory_path)
             
-            if response.status_code == 404:
+            if not all_files:
                 return {
                     'url': repo_url,
                     'valid': False,
-                    'error': 'Repository not found or is private',
-                    'details': {}
-                }
-            elif response.status_code == 403:
-                return {
-                    'url': repo_url,
-                    'valid': False,
-                    'error': 'Rate limited or repository access denied',
-                    'details': {}
-                }
-            elif response.status_code != 200:
-                return {
-                    'url': repo_url,
-                    'valid': False,
-                    'error': f'HTTP {response.status_code}: Could not access repository',
+                    'error': 'Could not fetch repository contents',
                     'details': {}
                 }
             
-            contents = response.json()
-            files_found = self._check_files(contents)
+            # Check for required files in the collected files
+            files_found = self._check_files_recursive(all_files)
             
-            # Get CSS content if available
+            # Get CSS content from all CSS files found
             css_content = ""
-            css_files_data = []
-            if check_css_content and files_found['css_files']:
-                for css_file in files_found['css_files_details']:
-                    if css_file.get('download_url'):
-                        try:
-                            css_response = requests.get(css_file['download_url'], timeout=10)
-                            if css_response.status_code == 200:
-                                css_content += css_response.text + "\n"
-                                css_files_data.append({
-                                    'name': css_file['name'],
-                                    'content': css_response.text
-                                })
-                        except:
-                            pass
-            
-            # Get HTML content for font checking
             html_content = ""
-            html_files_data = []
-            if files_found['html_files']:
-                for html_file in files_found['html_files_details']:
-                    if html_file.get('download_url'):
+            
+            if check_css_content:
+                for file_info in all_files:
+                    if file_info['name'].endswith('.css') and file_info.get('download_url'):
                         try:
-                            html_response = requests.get(html_file['download_url'], timeout=10)
+                            css_response = requests.get(file_info['download_url'], timeout=10)
+                            if css_response.status_code == 200:
+                                css_content += f"\n/* File: {file_info['path']} */\n"
+                                css_content += css_response.text
+                        except:
+                            pass
+                    
+                    if file_info['name'].endswith('.html') and file_info.get('download_url'):
+                        try:
+                            html_response = requests.get(file_info['download_url'], timeout=10)
                             if html_response.status_code == 200:
-                                html_content += html_response.text + "\n"
-                                html_files_data.append({
-                                    'name': html_file['name'],
-                                    'content': html_response.text
-                                })
+                                html_content += f"\n<!-- File: {file_info['path']} -->\n"
+                                html_content += html_response.text
                         except:
                             pass
             
-            # Check CSS requirements (with HTML content for font checking)
+            # Check CSS requirements
             css_general_check = self._check_css_general_requirements(css_content, html_content) if css_content else {}
             css_selectors_check = self._check_css_selectors(css_content) if css_content else {}
             
             # Generate GitHub Pages URL
-            pages_url = self._get_pages_url(repo_url)
+            pages_url = self._get_pages_url(base_repo_url)
             
             # Check if Pages site is accessible
             pages_accessible = self._check_pages_accessibility(pages_url)
@@ -361,8 +327,8 @@ class StudentRepoValidator:
                 'pages_accessible': pages_accessible,
                 'has_css_content': bool(css_content),
                 'has_html_content': bool(html_content),
-                'css_files_count': len(files_found['css_files_details']),
-                'html_files_count': len(files_found['html_files_details']),
+                'css_files_count': len(files_found['css_files']),
+                'html_files_count': len(files_found['html_files']),
                 'summary_counts': {
                     'total_required_files': 5,
                     'files_complete': sum([files_found.get('has_readme', False),
@@ -391,6 +357,144 @@ class StudentRepoValidator:
                 'error': f'Unexpected error: {str(e)}',
                 'details': {}
             }
+    
+    def _extract_base_repo_and_path(self, url: str) -> tuple:
+        """Extract the base repository URL and subdirectory path from a GitHub URL"""
+        # Clean the URL
+        url = self._clean_url(url)
+        
+        # Pattern to match GitHub repo URLs with optional /tree/branch/path
+        pattern = r'(https?://github\.com/[^/]+/[^/]+)(?:/tree/[^/]+)?(.*)?'
+        match = re.match(pattern, url)
+        
+        if match:
+            base_url = match.group(1)
+            path = match.group(2) or ''
+            # Remove leading slash from path
+            if path.startswith('/'):
+                path = path[1:]
+            return base_url, path
+        return url, ""
+    
+    def _get_all_repository_files(self, repo_url: str, subpath: str = "") -> List[Dict]:
+        """Recursively get all files from a GitHub repository"""
+        all_files = []
+        
+        # Build the API URL
+        api_url = self._get_api_url(repo_url)
+        if not api_url:
+            return all_files
+        
+        # If there's a subpath, append it to the API URL
+        if subpath:
+            api_url = f"{api_url}/{subpath}"
+        
+        try:
+            response = requests.get(api_url, timeout=10)
+            if response.status_code != 200:
+                return all_files
+            
+            contents = response.json()
+            
+            for item in contents:
+                if isinstance(item, dict):
+                    if item.get('type') == 'file':
+                        all_files.append({
+                            'name': item.get('name'),
+                            'path': item.get('path'),
+                            'download_url': item.get('download_url'),
+                            'size': item.get('size', 0)
+                        })
+                    elif item.get('type') == 'dir':
+                        # Recursively get files from subdirectory
+                        subdir_files = self._get_all_repository_files(repo_url, item.get('path'))
+                        all_files.extend(subdir_files)
+        
+        except Exception as e:
+            print(f"Error fetching repository contents: {e}")
+        
+        return all_files
+    
+    def _check_files_recursive(self, all_files: List[Dict]) -> Dict:
+        """Check for required files across all files in the repository"""
+        result = {
+            'has_readme': False,
+            'has_standup': False,
+            'has_css': False,
+            'has_html': False,
+            'has_screenshot': False,
+            'readme_content': None,
+            'css_files': [],
+            'css_files_details': [],
+            'html_files': [],
+            'html_files_details': [],
+            'screenshot_files': [],
+            'other_files': []
+        }
+        
+        for file_info in all_files:
+            name = file_info['name'].lower()
+            
+            # Check README
+            if name == 'readme.md':
+                result['has_readme'] = True
+                if file_info.get('download_url'):
+                    try:
+                        readme_response = requests.get(file_info['download_url'], timeout=5)
+                        if readme_response.status_code == 200:
+                            result['readme_content'] = readme_response.text[:500]
+                    except:
+                        pass
+            
+            # Check standup.md
+            elif name == 'standup.md':
+                result['has_standup'] = True
+            
+            # Check CSS files
+            elif name.endswith('.css'):
+                result['has_css'] = True
+                result['css_files'].append(file_info['name'])
+                result['css_files_details'].append({
+                    'name': file_info['name'],
+                    'path': file_info['path'],
+                    'download_url': file_info['download_url']
+                })
+            
+            # Check HTML files
+            elif name.endswith('.html'):
+                result['has_html'] = True
+                result['html_files'].append(file_info['name'])
+                result['html_files_details'].append({
+                    'name': file_info['name'],
+                    'path': file_info['path'],
+                    'download_url': file_info['download_url']
+                })
+            
+            # Check for screenshot images
+            elif any(name.endswith(ext) for ext in self.screenshot_extensions):
+                screenshot_keywords = ['screenshot', 'validation', 'css-validation', 'validator', 'screen-shot', 'css-check']
+                is_likely_screenshot = any(keyword in name for keyword in screenshot_keywords)
+                
+                if is_likely_screenshot or 'screenshot' in name or 'validation' in name:
+                    result['has_screenshot'] = True
+                    result['screenshot_files'].append({
+                        'name': file_info['name'],
+                        'path': file_info['path'],
+                        'download_url': file_info['download_url'],
+                        'size': file_info.get('size', 0)
+                    })
+            
+            else:
+                result['other_files'].append(file_info['name'])
+        
+        if not result['has_screenshot']:
+            # Check for any image files that might be screenshots
+            image_files = [f['name'] for f in all_files 
+                          if any(f['name'].lower().endswith(ext) for ext in self.screenshot_extensions)]
+            if image_files:
+                result['possible_screenshots'] = image_files
+        
+        return result
     
     def _get_missing_files_list(self, files_check: Dict) -> List[str]:
         """Get list of missing file names"""
@@ -530,21 +634,9 @@ class StudentRepoValidator:
         """Check CSS content for required selectors"""
         results = {}
         
-        print(f"\n[DEBUG] Looking for selectors in CSS...")
-        
         for selector_name, selector_info in self.css_selectors_requirements.items():
             matches = list(re.finditer(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE))
             found = len(matches) > 0
-            
-            # Special debug for element selector
-            if selector_name == 'element_selector':
-                if found:
-                    print(f"[DEBUG] ✓ Found element selectors: {[m.group(0) for m in matches][:3]}")
-                else:
-                    print(f"[DEBUG] ✗ No element selectors found with pattern: {selector_info['pattern']}")
-                    # Check if 'body' exists in CSS
-                    if 'body' in css_content:
-                        print(f"[DEBUG] 'body' found in CSS but pattern didn't match")
             
             results[selector_name] = {
                 'description': selector_info['description'],
@@ -600,85 +692,6 @@ class StudentRepoValidator:
         except:
             return False
     
-    def _check_files(self, contents: List[Dict]) -> Dict:
-        """Check for required files in repository contents"""
-        result = {
-            'has_readme': False,
-            'has_standup': False,
-            'has_css': False,
-            'has_html': False,
-            'has_screenshot': False,
-            'readme_content': None,
-            'css_files': [],
-            'css_files_details': [],
-            'html_files': [],
-            'html_files_details': [],
-            'screenshot_files': [],
-            'other_files': []
-        }
-        
-        for item in contents:
-            if isinstance(item, dict):
-                name = item.get('name', '').lower()
-                
-                # Check README
-                if name == 'readme.md':
-                    result['has_readme'] = True
-                    if 'download_url' in item:
-                        try:
-                            readme_response = requests.get(item['download_url'], timeout=5)
-                            if readme_response.status_code == 200:
-                                result['readme_content'] = readme_response.text[:500]
-                        except:
-                            pass
-                
-                # Check standup.md
-                elif name == 'standup.md':
-                    result['has_standup'] = True
-                
-                # Check CSS files
-                elif name.endswith('.css'):
-                    result['has_css'] = True
-                    result['css_files'].append(item.get('name'))
-                    result['css_files_details'].append({
-                        'name': item.get('name'),
-                        'download_url': item.get('download_url')
-                    })
-                
-                # Check HTML files
-                elif name.endswith('.html'):
-                    result['has_html'] = True
-                    result['html_files'].append(item.get('name'))
-                    result['html_files_details'].append({
-                        'name': item.get('name'),
-                        'download_url': item.get('download_url')
-                    })
-                
-                # Check for screenshot images
-                elif any(name.endswith(ext) for ext in self.screenshot_extensions):
-                    screenshot_keywords = ['screenshot', 'validation', 'css-validation', 'validator', 'screen-shot', 'css-check']
-                    is_likely_screenshot = any(keyword in name for keyword in screenshot_keywords)
-                    
-                    if is_likely_screenshot or 'screenshot' in name or 'validation' in name:
-                        result['has_screenshot'] = True
-                        result['screenshot_files'].append({
-                            'name': item.get('name'),
-                            'download_url': item.get('download_url'),
-                            'size': item.get('size', 0)
-                        })
-                
-                else:
-                    result['other_files'].append(item.get('name'))
-        
-        if not result['has_screenshot']:
-            image_files = [item.get('name') for item in contents 
-                          if isinstance(item, dict) and 
-                          any(item.get('name', '').lower().endswith(ext) for ext in self.screenshot_extensions)]
-            if image_files:
-                result['possible_screenshots'] = image_files
-        
-        return result
-    
     def print_validation_result(self, result: Dict):
         """Pretty print validation results to terminal"""
         
@@ -707,6 +720,7 @@ class StudentRepoValidator:
         print("\n📄 Required Files:")
         print("-" * 40)
         
+        # Show where files were found
         if files_check.get('has_readme'):
             print("  ✅ README.md - Found")
             if files_check.get('readme_content'):
@@ -726,12 +740,21 @@ class StudentRepoValidator:
         if files_check.get('has_css'):
             css_files = files_check.get('css_files', [])
             print(f"  ✅ CSS File(s) - Found: {', '.join(css_files)}")
+            # Show paths if they're in subdirectories
+            if files_check.get('css_files_details'):
+                for css_file in files_check['css_files_details']:
+                    if '/' in css_file.get('path', ''):
+                        print(f"     └─ Location: {css_file['path']}")
         else:
             print("  ❌ CSS File - MISSING (need at least one .css file)")
         
         if files_check.get('has_html'):
             html_files = files_check.get('html_files', [])
             print(f"  ✅ HTML File(s) - Found: {', '.join(html_files)}")
+            if files_check.get('html_files_details'):
+                for html_file in files_check['html_files_details']:
+                    if '/' in html_file.get('path', ''):
+                        print(f"     └─ Location: {html_file['path']}")
         else:
             print("  ❌ HTML File - MISSING (need at least one .html file)")
         
@@ -742,6 +765,8 @@ class StudentRepoValidator:
             print(f"  ✅ Screenshot found!")
             for screenshot in screenshot_files:
                 print(f"     └─ {screenshot['name']} ({screenshot.get('size', 0)} bytes)")
+                if '/' in screenshot.get('path', ''):
+                    print(f"        Location: {screenshot['path']}")
         else:
             print("  ❌ CSS Validation Screenshot - MISSING")
             if files_check.get('possible_screenshots'):
@@ -860,7 +885,7 @@ class StudentRepoValidator:
 class InteractiveValidator:
     """
     Interactive terminal validator that accepts links one by one
-    Can validate ANY GitHub repository URL
+    Can validate ANY GitHub repository URL, including subdirectories
     """
     
     def __init__(self):
@@ -912,8 +937,8 @@ class InteractiveValidator:
         print("    - Pseudo-class, Selector List")
         print("    - All 4 Combinator types")
         print("    - Combined selectors, :has(), Nested selectors")
-        print("\n💡 You can validate ANY GitHub repository URL")
-        print("   The tool will check for all lab requirements regardless of repository name")
+        print("\n💡 You can validate ANY GitHub repository URL (including subdirectories)")
+        print("   The tool will search all folders recursively for the required files")
     
     def print_summary(self):
         """Print summary of all checked repositories"""
@@ -945,24 +970,6 @@ class InteractiveValidator:
                     
                     print(f"\n{idx}. {repo['url']}")
                     print(f"   📁 Missing: {files_missing_count} files  |  🎨 Missing: {general_missing_count} general  |  🔍 Missing: {selectors_missing_count} selectors")
-                    
-                    # Show specific missing items for first few incomplete repos
-                    if idx <= 3:
-                        missing_files = summary.get('files_missing_list', [])
-                        if missing_files:
-                            print(f"   Missing files: {', '.join(missing_files)}")
-                        
-                        missing_general = summary.get('general_missing_list', [])
-                        if missing_general and len(missing_general) <= 5:
-                            print(f"   Missing general: {', '.join(missing_general)}")
-                        elif missing_general:
-                            print(f"   Missing general: {len(missing_general)} items")
-                        
-                        missing_selectors = summary.get('selectors_missing_list', [])
-                        if missing_selectors and len(missing_selectors) <= 5:
-                            print(f"   Missing selectors: {', '.join(missing_selectors)}")
-                        elif missing_selectors:
-                            print(f"   Missing selectors: {len(missing_selectors)} items")
         
         if valid > 0:
             print("\n\n✅ COMPLETE REPOSITORIES:")
@@ -985,6 +992,7 @@ def quick_check():
     if len(sys.argv) != 2:
         print("Usage: python scraper.py <github-repo-url>")
         print("Example: python scraper.py https://github.com/username/repository-name")
+        print("Example with subdirectory: python scraper.py https://github.com/username/sp26-cse110-lab3/tree/main/lab2")
         return
     
     validator = StudentRepoValidator()
