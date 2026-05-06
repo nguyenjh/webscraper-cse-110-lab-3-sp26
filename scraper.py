@@ -197,7 +197,6 @@ class StudentRepoValidator:
                 'required': True
             },
             'nested_selectors': {
-                # Simplified pattern - just look for & followed by a selector and then {
                 'pattern': r'&\s+[a-zA-Z0-9_\-.#]+\s*\{',
                 'description': 'Nested selectors using & (new in 2023)',
                 'required': True
@@ -231,11 +230,19 @@ class StudentRepoValidator:
         try:
             all_files = self._get_all_repository_files(base_repo_url, subdirectory_path)
             
+            if all_files is None:
+                return {
+                    'url': repo_url,
+                    'valid': False,
+                    'error': 'GitHub API rate limit exceeded. Please wait a few minutes and try again.',
+                    'details': {}
+                }
+            
             if not all_files:
                 return {
                     'url': repo_url,
                     'valid': False,
-                    'error': 'Could not fetch repository contents',
+                    'error': 'Could not fetch repository contents. Repository may be empty or inaccessible.',
                     'details': {}
                 }
             
@@ -377,7 +384,7 @@ class StudentRepoValidator:
             return base_url, path
         return url, ""
     
-    def _get_all_repository_files(self, repo_url: str, subpath: str = "") -> List[Dict]:
+    def _get_all_repository_files(self, repo_url: str, subpath: str = "") -> Optional[List[Dict]]:
         """Recursively get all files from a GitHub repository"""
         all_files = []
         
@@ -392,10 +399,27 @@ class StudentRepoValidator:
         
         try:
             response = requests.get(api_url, timeout=10)
+            
+            # Check for rate limiting
+            if response.status_code == 403:
+                # Check if it's a rate limit error
+                if 'X-RateLimit-Remaining' in response.headers:
+                    remaining = int(response.headers.get('X-RateLimit-Remaining', 0))
+                    if remaining == 0:
+                        print(f"\n⚠️ GitHub API rate limit exceeded. Please wait a few minutes.")
+                        return None
+                return all_files
+            
             if response.status_code != 200:
                 return all_files
             
             contents = response.json()
+            
+            # Check if contents is a list (expected) or a dict (error)
+            if not isinstance(contents, list):
+                if isinstance(contents, dict) and 'message' in contents:
+                    print(f"\n⚠️ GitHub API Error: {contents['message']}")
+                return all_files
             
             for item in contents:
                 if isinstance(item, dict):
@@ -409,10 +433,13 @@ class StudentRepoValidator:
                     elif item.get('type') == 'dir':
                         # Recursively get files from subdirectory
                         subdir_files = self._get_all_repository_files(repo_url, item.get('path'))
+                        if subdir_files is None:
+                            return None
                         all_files.extend(subdir_files)
         
         except Exception as e:
             print(f"Error fetching repository contents: {e}")
+            return all_files
         
         return all_files
     
@@ -644,34 +671,9 @@ class StudentRepoValidator:
         """Check CSS content for required selectors"""
         results = {}
         
-        # Debug output for nested selectors
-        print(f"\n[DEBUG] Looking for nested selectors with & symbol...")
-        if '&' in css_content:
-            print(f"[DEBUG] '&' symbol found in CSS")
-            # Try multiple patterns to find nested selectors
-            test_patterns = [
-                r'&\s+[a-zA-Z0-9_\-.#]+\s*\{',  # & h2 {
-                r'&[a-zA-Z0-9_\-.#]+\s*\{',     # &h2 {
-                r'&\s*\{',                       # & {
-            ]
-            for i, pattern in enumerate(test_patterns):
-                test_matches = re.findall(pattern, css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE)
-                if test_matches:
-                    print(f"[DEBUG] Pattern {i+1} matched: {test_matches[:2]}")
-        
         for selector_name, selector_info in self.css_selectors_requirements.items():
             matches = list(re.finditer(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE))
             found = len(matches) > 0
-            
-            if selector_name == 'nested_selectors' and found:
-                print(f"[DEBUG] ✓ Nested selectors detected! Found {len(matches)} instances")
-            elif selector_name == 'nested_selectors' and not found and '&' in css_content:
-                # Try a more aggressive pattern
-                aggressive_pattern = r'&[^\{]*\{'
-                aggressive_matches = re.findall(aggressive_pattern, css_content, re.MULTILINE | re.DOTALL)
-                if aggressive_matches:
-                    print(f"[DEBUG] Found & with aggressive pattern: {aggressive_matches[:2]}")
-                    found = True  # Consider it found
             
             results[selector_name] = {
                 'description': selector_info['description'],
