@@ -23,7 +23,7 @@ class StudentRepoValidator:
         # Image file extensions for validation screenshot
         self.screenshot_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']
         
-        # CSS General Topics Requirements - Updated grid pattern
+        # CSS General Topics Requirements
         self.css_general_requirements = {
             'comments': {
                 'pattern': r'/\*.*?\*/',
@@ -111,7 +111,6 @@ class StudentRepoValidator:
                 'flex_attributes_required': 3
             },
             'grid': {
-                # Updated to match any grid-related property
                 'pattern': r'display\s*:\s*grid|grid-template-(?:columns|rows|areas)|grid-(?:template|auto-flow|column|row|area|gap|row-gap|column-gap)|justify-items|align-items|justify-content|align-content',
                 'description': 'CSS Grid properties',
                 'required': True,
@@ -130,7 +129,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements
+        # CSS Selectors Requirements - Simplified nested selectors pattern
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -198,8 +197,9 @@ class StudentRepoValidator:
                 'required': True
             },
             'nested_selectors': {
-                'pattern': r'[a-zA-Z0-9_\-.#]+\s*\{\s*&\s+[a-zA-Z0-9_\-.#]+\s*\{',
-                'description': 'Nested selectors (new in 2023)',
+                # Simplified pattern - just look for & followed by a selector and then {
+                'pattern': r'&\s+[a-zA-Z0-9_\-.#]+\s*\{',
+                'description': 'Nested selectors using & (new in 2023)',
                 'required': True
             }
         }
@@ -644,9 +644,34 @@ class StudentRepoValidator:
         """Check CSS content for required selectors"""
         results = {}
         
+        # Debug output for nested selectors
+        print(f"\n[DEBUG] Looking for nested selectors with & symbol...")
+        if '&' in css_content:
+            print(f"[DEBUG] '&' symbol found in CSS")
+            # Try multiple patterns to find nested selectors
+            test_patterns = [
+                r'&\s+[a-zA-Z0-9_\-.#]+\s*\{',  # & h2 {
+                r'&[a-zA-Z0-9_\-.#]+\s*\{',     # &h2 {
+                r'&\s*\{',                       # & {
+            ]
+            for i, pattern in enumerate(test_patterns):
+                test_matches = re.findall(pattern, css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+                if test_matches:
+                    print(f"[DEBUG] Pattern {i+1} matched: {test_matches[:2]}")
+        
         for selector_name, selector_info in self.css_selectors_requirements.items():
             matches = list(re.finditer(selector_info['pattern'], css_content, re.MULTILINE | re.DOTALL | re.IGNORECASE))
             found = len(matches) > 0
+            
+            if selector_name == 'nested_selectors' and found:
+                print(f"[DEBUG] ✓ Nested selectors detected! Found {len(matches)} instances")
+            elif selector_name == 'nested_selectors' and not found and '&' in css_content:
+                # Try a more aggressive pattern
+                aggressive_pattern = r'&[^\{]*\{'
+                aggressive_matches = re.findall(aggressive_pattern, css_content, re.MULTILINE | re.DOTALL)
+                if aggressive_matches:
+                    print(f"[DEBUG] Found & with aggressive pattern: {aggressive_matches[:2]}")
+                    found = True  # Consider it found
             
             results[selector_name] = {
                 'description': selector_info['description'],
