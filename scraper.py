@@ -3,6 +3,27 @@ import requests
 from urllib.parse import urlparse, urljoin
 from typing import Dict, Optional, List, Set
 import time
+import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    env_path = Path('.env')
+    if env_path.exists():
+        load_dotenv(env_path)
+        print("[INFO] Loaded environment variables from .env file")
+    else:
+        # Try to load from parent directory
+        parent_env = Path('../.env')
+        if parent_env.exists():
+            load_dotenv(parent_env)
+            print("[INFO] Loaded environment variables from parent .env file")
+except ImportError:
+    print("[INFO] python-dotenv not installed. Install it with: pip install python-dotenv")
+    print("[INFO] Will use system environment variables instead")
+
+# Get GitHub token from environment variable
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
 
 class StudentRepoValidator:
     """
@@ -11,7 +32,8 @@ class StudentRepoValidator:
     Can validate ANY GitHub repository URL, including subdirectories
     """
     
-    def __init__(self):
+    def __init__(self, github_token: str = None):
+        self.github_token = github_token or GITHUB_TOKEN
         self.required_files = {
             'README.md': 'README.md file with GitHub Pages URL',
             'standup.md': 'Standup notes template file',
@@ -19,6 +41,18 @@ class StudentRepoValidator:
             'html_file': 'HTML file (.html)',
             'css_screenshot': 'CSS validation screenshot (.png, .jpg, .jpeg, .gif)'
         }
+        
+        # Headers for GitHub API requests
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        if self.github_token:
+            self.headers['Authorization'] = f'token {self.github_token}'
+            print(f"[INFO] ✅ GitHub token loaded - Higher rate limit enabled (5000 requests/hour)")
+        else:
+            print(f"[INFO] ⚠️  No GitHub token found - Using unauthenticated requests (60 requests/hour)")
+            print(f"[INFO] To add a token, create a .env file with: GITHUB_TOKEN=your_token_here")
+            print(f"[INFO] Get a token at: https://github.com/settings/tokens")
         
         # Image file extensions for validation screenshot
         self.screenshot_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']
@@ -129,7 +163,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements - Simplified nested selectors pattern
+        # CSS Selectors Requirements
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -257,7 +291,7 @@ class StudentRepoValidator:
                 for file_info in all_files:
                     if file_info['name'].endswith('.css') and file_info.get('download_url'):
                         try:
-                            css_response = requests.get(file_info['download_url'], timeout=10)
+                            css_response = requests.get(file_info['download_url'], headers=self.headers, timeout=10)
                             if css_response.status_code == 200:
                                 css_content += f"\n/* File: {file_info['path']} */\n"
                                 css_content += css_response.text
@@ -266,7 +300,7 @@ class StudentRepoValidator:
                     
                     if file_info['name'].endswith('.html') and file_info.get('download_url'):
                         try:
-                            html_response = requests.get(file_info['download_url'], timeout=10)
+                            html_response = requests.get(file_info['download_url'], headers=self.headers, timeout=10)
                             if html_response.status_code == 200:
                                 html_content += f"\n<!-- File: {file_info['path']} -->\n"
                                 html_content += html_response.text
@@ -398,7 +432,7 @@ class StudentRepoValidator:
             api_url = f"{api_url}/{subpath}"
         
         try:
-            response = requests.get(api_url, timeout=10)
+            response = requests.get(api_url, headers=self.headers, timeout=10)
             
             # Check for rate limiting
             if response.status_code == 403:
@@ -406,7 +440,8 @@ class StudentRepoValidator:
                 if 'X-RateLimit-Remaining' in response.headers:
                     remaining = int(response.headers.get('X-RateLimit-Remaining', 0))
                     if remaining == 0:
-                        print(f"\n⚠️ GitHub API rate limit exceeded. Please wait a few minutes.")
+                        reset_time = response.headers.get('X-RateLimit-Reset', 'unknown')
+                        print(f"\n⚠️ GitHub API rate limit exceeded. Resets at: {reset_time}")
                         return None
                 return all_files
             
@@ -468,7 +503,7 @@ class StudentRepoValidator:
                 result['has_readme'] = True
                 if file_info.get('download_url'):
                     try:
-                        readme_response = requests.get(file_info['download_url'], timeout=5)
+                        readme_response = requests.get(file_info['download_url'], headers=self.headers, timeout=5)
                         if readme_response.status_code == 200:
                             result['readme_content'] = readme_response.text[:500]
                     except:
@@ -724,7 +759,7 @@ class StudentRepoValidator:
         if not pages_url:
             return False
         try:
-            response = requests.get(pages_url, timeout=5)
+            response = requests.get(pages_url, headers=self.headers, timeout=5)
             return response.status_code == 200
         except:
             return False
@@ -976,6 +1011,15 @@ class InteractiveValidator:
         print("    - Combined selectors, :has(), Nested selectors")
         print("\n💡 You can validate ANY GitHub repository URL (including subdirectories)")
         print("   The tool will search all folders recursively for the required files")
+        
+        # Show token status
+        if GITHUB_TOKEN:
+            print(f"\n✅ GitHub token found! Rate limit: 5000 requests/hour")
+        else:
+            print(f"\n⚠️  No GitHub token found. Rate limit: 60 requests/hour")
+            print(f"   To add a token, create a .env file with: GITHUB_TOKEN=your_token_here")
+            print(f"   Get a token at: https://github.com/settings/tokens")
+            print(f"   Then install python-dotenv: pip install python-dotenv\n")
     
     def print_summary(self):
         """Print summary of all checked repositories"""
