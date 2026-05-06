@@ -23,7 +23,7 @@ class StudentRepoValidator:
         # Image file extensions for validation screenshot
         self.screenshot_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']
         
-        # CSS General Topics Requirements
+        # CSS General Topics Requirements - Updated grid pattern
         self.css_general_requirements = {
             'comments': {
                 'pattern': r'/\*.*?\*/',
@@ -111,7 +111,8 @@ class StudentRepoValidator:
                 'flex_attributes_required': 3
             },
             'grid': {
-                'pattern': r'display\s*:\s*grid|grid-template-(?:columns|rows|areas)|grid-(?:column|row|area|gap)|justify-items|align-items',
+                # Updated to match any grid-related property
+                'pattern': r'display\s*:\s*grid|grid-template-(?:columns|rows|areas)|grid-(?:template|auto-flow|column|row|area|gap|row-gap|column-gap)|justify-items|align-items|justify-content|align-content',
                 'description': 'CSS Grid properties',
                 'required': True,
                 'grid_attributes_required': 3
@@ -554,6 +555,27 @@ class StudentRepoValidator:
                 }
                 continue
             
+            # Special handling for grid to count attributes properly
+            if req_name == 'grid':
+                # Count unique grid-related properties
+                grid_props = re.findall(req_info['pattern'], css_content, re.MULTILINE | re.IGNORECASE)
+                unique_props = set(grid_props)
+                found = len(unique_props) >= req_info['grid_attributes_required']
+                
+                details = {
+                    'grid_attributes_found': list(unique_props),
+                    'grid_attributes_needed': req_info['grid_attributes_required']
+                }
+                
+                results[req_name] = {
+                    'description': req_info['description'],
+                    'found': found,
+                    'required': req_info['required'],
+                    'matches_found': len(unique_props),
+                    'details': details
+                }
+                continue
+            
             # Regular pattern matching for other requirements
             matches = re.findall(req_info['pattern'], css_content, re.MULTILINE | re.IGNORECASE | re.DOTALL)
             
@@ -583,18 +605,6 @@ class StudentRepoValidator:
                     found = False
                     details['flex_attributes_needed'] = req_info['flex_attributes_required']
                     details['flex_attributes_found'] = list(unique_attrs)
-            
-            # Check for specific grid attributes
-            if req_name == 'grid' and 'grid_attributes_required' in req_info:
-                grid_attrs = re.findall(r'(grid-template-columns|grid-template-rows|grid-template-areas|grid-column|grid-row|grid-area|grid-gap|justify-items|align-items)', css_content, re.IGNORECASE)
-                unique_attrs = set(grid_attrs)
-                if len(unique_attrs) >= req_info['grid_attributes_required']:
-                    found = True
-                    details['grid_attributes_found'] = list(unique_attrs)
-                else:
-                    found = False
-                    details['grid_attributes_needed'] = req_info['grid_attributes_required']
-                    details['grid_attributes_found'] = list(unique_attrs)
             
             # Check for display value uniqueness
             if req_name == 'display_values' and 'min_unique_values' in req_info:
