@@ -60,7 +60,7 @@ class StudentRepoValidator:
         # CSS General Topics Requirements
         self.css_general_requirements = {
             'comments': {
-                'pattern': r'/\*.*?\*/',
+                'pattern': r'(?m)^\s*/\*.*?\*/',  # Fixed: Only match actual comment syntax, not at start of file
                 'description': 'CSS comments (/* comment */)',
                 'required': True
             },
@@ -293,8 +293,9 @@ class StudentRepoValidator:
                         try:
                             css_response = requests.get(file_info['download_url'], headers=self.headers, timeout=10)
                             if css_response.status_code == 200:
-                                css_content += f"\n/* File: {file_info['path']} */\n"
+                                # Don't add file headers to avoid false positives in comment detection
                                 css_content += css_response.text
+                                css_content += "\n"  # Add newline between files
                         except:
                             pass
                     
@@ -302,8 +303,8 @@ class StudentRepoValidator:
                         try:
                             html_response = requests.get(file_info['download_url'], headers=self.headers, timeout=10)
                             if html_response.status_code == 200:
-                                html_content += f"\n<!-- File: {file_info['path']} -->\n"
                                 html_content += html_response.text
+                                html_content += "\n"
                         except:
                             pass
             
@@ -641,8 +642,25 @@ class StudentRepoValidator:
             # Regular pattern matching for other requirements
             matches = re.findall(req_info['pattern'], css_content, re.MULTILINE | re.IGNORECASE | re.DOTALL)
             
+            # Special handling for comments to avoid false positives
+            if req_name == 'comments':
+                # Filter out matches that might be from our file headers
+                valid_matches = []
+                for match in matches:
+                    # Skip if the match contains "File:" (our debug headers)
+                    if 'File:' not in match and 'file:' not in match:
+                        valid_matches.append(match)
+                matches = valid_matches
+            
             found = len(matches) > 0
             details = {}
+            
+            # Debug for comments
+            if req_name == 'comments':
+                if found:
+                    print(f"[DEBUG] Comments found: {matches[:2]}")
+                else:
+                    print(f"[DEBUG] No CSS comments found")
             
             # Check for minimum count if specified
             if 'min_count' in req_info:
