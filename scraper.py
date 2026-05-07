@@ -60,7 +60,7 @@ class StudentRepoValidator:
         # CSS General Topics Requirements
         self.css_general_requirements = {
             'comments': {
-                'pattern': r'/\*.*?\*/',  # Fixed: Match both inline and standalone comments
+                'pattern': r'/\*.*?\*/',
                 'description': 'CSS comments (/* comment */)',
                 'required': True
             },
@@ -163,7 +163,7 @@ class StudentRepoValidator:
             }
         }
         
-        # CSS Selectors Requirements
+        # CSS Selectors Requirements - FIXED nested selectors pattern
         self.css_selectors_requirements = {
             'class_selector': {
                 'pattern': r'\.[a-zA-Z_][\w-]*(?=[\s\n\r]*[,{])',
@@ -231,7 +231,13 @@ class StudentRepoValidator:
                 'required': True
             },
             'nested_selectors': {
-                'pattern': r'&\s+[a-zA-Z0-9_\-.#]+\s*\{',
+                # Updated pattern to match:
+                # - & alone (with just a block)
+                # - &:hover (with pseudo-class)
+                # - & .class (with space)
+                # - &#id (with ID)
+                # - &element (with element)
+                'pattern': r'&\s*(?:[a-zA-Z0-9_\-.#:]+\s*)?\{',
                 'description': 'Nested selectors using & (new in 2023)',
                 'required': True
             }
@@ -620,17 +626,6 @@ class StudentRepoValidator:
             
             # Regular pattern matching for other requirements
             matches = re.findall(req_info['pattern'], css_content, re.MULTILINE | re.IGNORECASE | re.DOTALL)
-            
-            # Special handling for comments - filter out false positives
-            if req_name == 'comments':
-                # Filter out matches that might be from URLs or other false positives
-                valid_matches = []
-                for match in matches:
-                    # Skip if the match contains "http" (could be in a URL)
-                    # Skip if it's empty or just whitespace
-                    if match and 'http' not in match and len(match) > 3:
-                        valid_matches.append(match)
-                matches = valid_matches
             
             found = len(matches) > 0
             details = {}
