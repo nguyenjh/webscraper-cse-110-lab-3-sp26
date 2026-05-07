@@ -60,7 +60,7 @@ class StudentRepoValidator:
         # CSS General Topics Requirements
         self.css_general_requirements = {
             'comments': {
-                'pattern': r'(?m)^\s*/\*.*?\*/',  # Fixed: Only match actual comment syntax, not at start of file
+                'pattern': r'/\*.*?\*/',  # Fixed: Match both inline and standalone comments
                 'description': 'CSS comments (/* comment */)',
                 'required': True
             },
@@ -618,49 +618,22 @@ class StudentRepoValidator:
                 }
                 continue
             
-            # Special handling for grid to count attributes properly
-            if req_name == 'grid':
-                # Count unique grid-related properties
-                grid_props = re.findall(req_info['pattern'], css_content, re.MULTILINE | re.IGNORECASE)
-                unique_props = set(grid_props)
-                found = len(unique_props) >= req_info['grid_attributes_required']
-                
-                details = {
-                    'grid_attributes_found': list(unique_props),
-                    'grid_attributes_needed': req_info['grid_attributes_required']
-                }
-                
-                results[req_name] = {
-                    'description': req_info['description'],
-                    'found': found,
-                    'required': req_info['required'],
-                    'matches_found': len(unique_props),
-                    'details': details
-                }
-                continue
-            
             # Regular pattern matching for other requirements
             matches = re.findall(req_info['pattern'], css_content, re.MULTILINE | re.IGNORECASE | re.DOTALL)
             
-            # Special handling for comments to avoid false positives
+            # Special handling for comments - filter out false positives
             if req_name == 'comments':
-                # Filter out matches that might be from our file headers
+                # Filter out matches that might be from URLs or other false positives
                 valid_matches = []
                 for match in matches:
-                    # Skip if the match contains "File:" (our debug headers)
-                    if 'File:' not in match and 'file:' not in match:
+                    # Skip if the match contains "http" (could be in a URL)
+                    # Skip if it's empty or just whitespace
+                    if match and 'http' not in match and len(match) > 3:
                         valid_matches.append(match)
                 matches = valid_matches
             
             found = len(matches) > 0
             details = {}
-            
-            # Debug for comments
-            if req_name == 'comments':
-                if found:
-                    print(f"[DEBUG] Comments found: {matches[:2]}")
-                else:
-                    print(f"[DEBUG] No CSS comments found")
             
             # Check for minimum count if specified
             if 'min_count' in req_info:
